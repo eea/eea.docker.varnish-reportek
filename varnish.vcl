@@ -38,7 +38,6 @@ sub vcl_recv {
         set req.http.X-Forwarded-Proto = "http";
     }
 
-    set req.backend_hint = server_instance_0;
 
     if (req.method == "PURGE") {
         # Not from an allowed IP? Then die with an error.
