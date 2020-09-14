@@ -39,25 +39,27 @@ sub vcl_recv {
     }
 
 
-    if (req.method == "PURGE") {
-        # Not from an allowed IP? Then die with an error.
-        if (!client.ip ~ purge) {
-            return (synth(405, "This IP is not allowed to send PURGE requests."));
-        }
-        return (purge);
-    }
+    # Handle special requests
+    if (req.method != "GET" && req.method != "HEAD") {
 
-    if (req.method == "BAN") {
-            # Same ACL check as above:
+        # POST - Logins and edits
+        if (req.method == "POST") {
+            return(pass);
+        }
+
+        # PURGE - The CacheFu product can invalidate updated URLs
+        if (req.method == "PURGE") {
             if (!client.ip ~ purge) {
-            return(synth(403, "Not allowed."));
+                return (synth(405, "Not allowed."));
             }
-            #ban("req.url ~ " + req.url);
-        ban("req.http.host == " + req.http.host +
-            " && req.url == " + req.url);
-            # Throw a synthetic page so the
-            # request won't go to the backend.
-            return(synth(200, "Ban added"));
+
+            # replace normal purge with ban-lurker way - may not work
+            # Cleanup double slashes: '//' -> '/' - refs #95891
+            ban ("obj.http.x-url == " + regsub(req.url, "\/\/", "/"));
+            return (synth(200, "Ban added. URL will be purged by lurker"));
+        }
+
+        return(pass);
     }
 
     ## for some urls or request we can do a pass here (no caching)
@@ -65,6 +67,8 @@ sub vcl_recv {
                 req.url ~ "robots\.txt$" ||
                 req.url ~ "aq_parent" ||
                 req.url ~ "manage$" ||
+                req.url ~ "help" ||
+                req.url ~ "xmlexports" ||
                 req.url ~ "manage_workspace$" ||
                 req.url ~ "manage_main$")) {
         return(pass);
@@ -76,9 +80,9 @@ sub vcl_recv {
     }
 
     # Keep auth/anon variants apart if "Vary: X-Anonymous" is in the response
-    if (!(req.http.Authorization || req.http.cookie ~ "(^|.*; )beaker\.session|_ZopeId|__ginger_snap=")) {
-        set req.http.X-Anonymous = "True";
-    }
+#    if (!(req.http.Authorization || req.http.cookie ~ "(^|.*; )beaker\.session|_ZopeId|__ginger_snap=")) {
+###        set req.http.X-Anonymous = "True";
+   # }
 
     # Only deal with "normal" types
     if (req.method != "GET" &&
@@ -188,10 +192,10 @@ sub vcl_backend_fetch{
 
 sub vcl_backend_response {
 
-    set beresp.http.Vary = "X-Anonymous,Accept-Encoding";
+    set beresp.http.Vary = "Accept-Encoding";
 
     # Only cache css/js/image content types and custom specified content types
-    if (beresp.http.Content-Type !~ "application/javascript|application/x-javascript|text/css|image/*|${VARNISH_CACHE_CTYPES}") {
+    if (beresp.http.Content-Type !~ "application/javascript|text/html|application/x-javascript|text/css|image/*|${VARNISH_CACHE_CTYPES}") {
         unset beresp.http.Cache-Control;
         set beresp.http.Cache-Control = "no-cache, max-age=0, must-revalidate";
         set beresp.ttl = 0s;
