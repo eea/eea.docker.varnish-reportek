@@ -191,6 +191,9 @@ sub vcl_backend_fetch{
 }
 
 sub vcl_backend_response {
+    # needed for ban-lurker
+    # Cleanup double slashes: '//' -> '/' - refs #95891
+    set beresp.http.x-url = regsub(bereq.url, "\/\/", "/");
 
     set beresp.http.Vary = "Accept-Encoding";
 
