@@ -44,7 +44,7 @@ backend_probe = """
 backend server_%(name)s_%(index)s {
     .host = "%(host)s";
     .port = "%(port)s";
-    .first_byte_timeout = "%(first_byte_timeout)s";
+    .first_byte_timeout = %(first_byte_timeout)s;
     .probe = {
         .url = "%(probe_url)s";
         .timeout = %(probe_timeout)s;
@@ -58,7 +58,7 @@ backend_no_probe = """
 backend server_%(name)s_%(index)s {
     .host = "%(host)s";
     .port = "%(port)s";
-    .first_byte_timeout = "%(first_byte_timeout)s";
+    .first_byte_timeout = %(first_byte_timeout)s;
 }
 """
 
