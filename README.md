@@ -1,4 +1,4 @@
-copernicus-land Varnish image
+reportek Varnish image
 =============================
 
 [![Docker]( https://dockerbuildbadges.quelltext.eu/status.svg?organization=eeacms&repository=reportek-varnish)](https://hub.docker.com/r/eeacms/reportek-varnish/builds)
