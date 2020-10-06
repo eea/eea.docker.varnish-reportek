@@ -8,6 +8,7 @@ ENV  PARAM_VALUE="-p thread_pool_min=100 -p thread_pool_max=1000 -p thread_pool_
      BACKENDS_PORT="8080" \
      BACKENDS_PROBE_ENABLED="false"
 
+COPY src/*.py src/track* src/*.sh  /
 COPY varnish.vcl /etc/varnish/conf.d/
 
 
