@@ -80,9 +80,11 @@ sub vcl_recv {
     }
 
     # Keep auth/anon variants apart if "Vary: X-Anonymous" is in the response
-#    if (!(req.http.Authorization || req.http.cookie ~ "(^|.*; )beaker\.session|_ZopeId|__ginger_snap=")) {
-###        set req.http.X-Anonymous = "True";
-   # }
+    if (!(req.http.Authorization || req.http.Cookie && req.http.cookie ~ "(^|.*; )beaker\.session|_ZopeId|__ginger_snap=")) {
+        set req.http.X-Anonymous = "True";
+    } else {
+        set req.http.X-Anonymous = "False";
+    }
 
     # Only deal with "normal" types
     if (req.method != "GET" &&
@@ -195,7 +197,7 @@ sub vcl_backend_response {
     # Cleanup double slashes: '//' -> '/' - refs #95891
     set beresp.http.x-url = regsub(bereq.url, "\/\/", "/");
 
-    set beresp.http.Vary = "Accept-Encoding";
+    set beresp.http.Vary = "X-Anonymous,Accept-Encoding";
 
     # Only cache css/js/image content types and custom specified content types
     if (beresp.http.Content-Type !~ "application/javascript|text/html|application/x-javascript|text/css|image/*|${VARNISH_CACHE_CTYPES}") {
@@ -261,6 +263,10 @@ sub vcl_deliver {
          set resp.http.X-Cache = "HIT";
     } else {
         set resp.http.X-Cache = "MISS";
+    }
+    if (!(req.http.X-Anonymous ~ "True")) {
+        set resp.http.Cache-Control = "max-age=0, no-cache, no-store, private, must-revalidate, post-check=0, pre-check=0";
+        set resp.http.Pragma = "no-cache";
     }
 }
 
