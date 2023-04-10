@@ -1,4 +1,16 @@
-vcl 4.0;
+vcl 4.1;
+
+import std;
+import directors;
+import dynamic;
+
+backend default none;
+
+sub vcl_init {
+
+  new cluster = dynamic.director(port = "<VARNISH_BACKEND_PORT>", ttl = <VARNISH_DNS_TTL>);
+
+}
 
 acl purge {
     "localhost";
@@ -13,23 +25,8 @@ acl purge {
 
 sub vcl_recv {
 
-
-    # Before anything else we need to fix gzip compression
-    if (req.http.Accept-Encoding) {
-        if (req.url ~ "\.(jpg|png|gif|gz|tgz|bz2|tbz|mp3|ogg)$") {
-            # No point in compressing these
-            unset req.http.Accept-Encoding;
-        } else if (req.http.Accept-Encoding ~ "br") {
-            set req.http.Accept-Encoding = "br";
-        } else if (req.http.Accept-Encoding ~ "gzip") {
-            set req.http.Accept-Encoding = "gzip";
-        } else if (req.http.Accept-Encoding ~ "deflate") {
-            set req.http.Accept-Encoding = "deflate";
-        } else {
-            # unknown algorithm
-            unset req.http.Accept-Encoding;
-        }
-    }
+    set req.backend_hint = cluster.backend("<VARNISH_BACKEND>");
+    set req.http.X-Varnish-Routed = "1";
 
     if (req.http.X-Forwarded-Proto == "https" ) {
         set req.http.X-Forwarded-Port = "443";
@@ -38,17 +35,10 @@ sub vcl_recv {
         set req.http.X-Forwarded-Proto = "http";
     }
 
+    set req.http.X-Username = "Anonymous";
 
-    # Handle special requests
-    if (req.method != "GET" && req.method != "HEAD") {
-
-        # POST - Logins and edits
-        if (req.method == "POST") {
-            return(pass);
-        }
-
-        # PURGE - The CacheFu product can invalidate updated URLs
-        if (req.method == "PURGE") {
+    # PURGE - The CacheFu product can invalidate updated URLs 
+    if (req.method == "PURGE") {
             if (!client.ip ~ purge) {
                 return (synth(405, "Not allowed."));
             }
@@ -57,9 +47,91 @@ sub vcl_recv {
             # Cleanup double slashes: '//' -> '/' - refs #95891
             ban ("obj.http.x-url == " + regsub(req.url, "\/\/", "/"));
             return (synth(200, "Ban added. URL will be purged by lurker"));
+    }
+
+    if (req.method == "BAN") {
+        # Same ACL check as above:
+        if (!client.ip ~ purge) {
+            return(synth(403, "Not allowed."));
+        }
+        ban("req.http.host == " + req.http.host +
+            " && req.url == " + req.url);
+            # Throw a synthetic page so the
+            # request won't go to the backend.
+            return(synth(200, "Ban added")
+        );
+    }
+
+    # Only deal with "normal" types
+    if (req.method != "GET" &&
+           req.method != "HEAD" &&
+           req.method != "PUT" &&
+           req.method != "POST" &&
+           req.method != "TRACE" &&
+           req.method != "OPTIONS" &&
+           req.method != "DELETE") {
+        /* Non-RFC2616 or CONNECT which is weird. */
+        return(pipe);
+    }
+
+
+    # Only cache GET or HEAD requests. This makes sure the POST requests are always passed.
+    if (req.method != "GET" && req.method != "HEAD") {
+        return(pass);
+    }
+
+
+    if (req.http.Expect) {
+        return(pipe);
+    }
+
+    if (req.http.If-None-Match && !req.http.If-Modified-Since) {
+        return(pass);
+    }
+
+    # Do not cache RestAPI authenticated requests
+    if (req.http.Authorization || req.http.Authenticate) {
+        set req.http.X-Username = "Authenticated (RestAPI)";
+
+        # pass (no caching)
+        unset req.http.If-Modified-Since;
+        return(pass);
+    }
+
+    set req.http.UrlNoQs = regsub(req.url, "\?.*$", "");
+    # Do not cache authenticated requests
+    if (req.http.Cookie && req.http.Cookie ~ "__ac(|_(name|password|persistent))=")
+    {
+       if (req.http.UrlNoQs ~ "\.(js|css)$") {
+            unset req.http.cookie;
+            return(pipe);
         }
 
+        set req.http.X-Username = regsub( req.http.Cookie, "^.*?__ac=([^;]*);*.*$", "\1" );
+
+        # pass (no caching)
+        unset req.http.If-Modified-Since;
         return(pass);
+    }
+
+    # Do not cache login form
+    if (req.url ~ "login_form$" || req.url ~ "login$")
+    {
+        # pass (no caching)
+        unset req.http.If-Modified-Since;
+        return(pass);
+    }
+
+    ### always cache these items:
+
+    # javascript and css
+    if (req.method == "GET" && req.url ~ "\.(js|css)") {
+        return(hash);
+    }
+
+    ## images
+    if (req.method == "GET" && req.url ~ "\.(gif|jpg|jpeg|bmp|png|tiff|tif|ico|img|tga|wmf)$") {
+        return(hash);
     }
 
     ## for some urls or request we can do a pass here (no caching)
@@ -119,7 +191,7 @@ sub vcl_recv {
     # Large static files should be piped, so they are delivered directly to the end-user without
     # waiting for Varnish to fully read the file first.
 
-    if (req.url ~ "^[^?]*\.(mp3,mp4|rar|tar|tgz|gz|wav|zip)(\?.*)?$") {
+    if (req.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$") {
         return(pipe);
     }
 
@@ -159,10 +231,33 @@ sub vcl_purge {
 
 sub vcl_hit {
     if (obj.ttl >= 0s) {
-        # A standard hit, deliver from cache
+        // A pure unadultered hit, deliver it
+        # normal hit
         return (deliver);
     }
 
+    # We have no fresh fish. Lets look at the stale ones.
+    if (std.healthy(req.backend_hint)) {
+        # Backend is healthy. Limit age to 10s.
+        if (obj.ttl + 10s > 0s) {
+            set req.http.grace = "normal(limited)";
+            return (deliver);
+        } else {
+            # No candidate for grace. Fetch a fresh object.
+            return(pass);
+        }
+    } else {
+        # backend is sick - use full grace
+        // Object is in grace, deliver it
+        // Automatically triggers a background fetch
+        if (obj.ttl + obj.grace > 0s) {
+            set req.http.grace = "full";
+            return (deliver);
+        } else {
+            # no graced object.
+            return (pass);
+        }
+    }
 
     if (req.method == "PURGE") {
         set req.method = "GET";
@@ -171,7 +266,7 @@ sub vcl_hit {
     }
 
     // fetch & deliver once we get the result
-    return (fetch);
+    return (pass); # Dead code, keep as a safeguard
 }
 
 sub vcl_miss {
@@ -199,6 +294,16 @@ sub vcl_backend_response {
 
     set beresp.http.Vary = "X-Anonymous,Accept-Encoding";
 
+    # stream possibly large files
+    if (bereq.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|xml|gml|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$") {
+        unset beresp.http.set-cookie;
+        set beresp.http.X-Cache-Stream = "YES";
+        set beresp.http.X-Cacheable = "NO - File Stream";
+        set beresp.uncacheable = true;
+        set beresp.do_stream = true;
+        return(deliver);
+    }
+
     # Only cache css/js/image content types and custom specified content types
     if (beresp.http.Content-Type !~ "application/javascript|text/html|application/x-javascript|text/css|image/*|${VARNISH_CACHE_CTYPES}") {
         unset beresp.http.Cache-Control;
@@ -218,24 +323,26 @@ sub vcl_backend_response {
     } elsif (beresp.http.Cache-Control ~ "private") {
         set beresp.http.X-Cacheable = "NO - Cache-Control=private";
         set beresp.uncacheable = true;
-        set beresp.ttl = 120s;
+        set beresp.ttl = <VARNISH_BERESP_TTL>;
     } elsif (beresp.http.Surrogate-control ~ "no-store") {
         set beresp.http.X-Cacheable = "NO - Surrogate-control=no-store";
         set beresp.uncacheable = true;
-        set beresp.ttl = 120s;
+        set beresp.ttl = <VARNISH_BERESP_TTL>;
     } elsif (!beresp.http.Surrogate-Control && beresp.http.Cache-Control ~ "no-cache|no-store") {
         set beresp.http.X-Cacheable = "NO - Cache-Control=no-cache|no-store";
         set beresp.uncacheable = true;
-        set beresp.ttl = 120s;
+        set beresp.ttl = <VARNISH_BERESP_TTL>;
     } elsif (beresp.http.Vary == "*") {
         set beresp.http.X-Cacheable = "NO - Vary=*";
         set beresp.uncacheable = true;
-        set beresp.ttl = 120s;
-
+        set beresp.ttl = <VARNISH_BERESP_TTL>;
 
     # ttl handling
     } elsif (beresp.ttl < 0s) {
         set beresp.http.X-Cacheable = "NO - TTL < 0";
+        set beresp.uncacheable = true;
+    } elsif (beresp.ttl == 0s) {
+        set beresp.http.X-Cacheable = "NO - TTL = 0";
         set beresp.uncacheable = true;
 
     # Varnish determined the object was cacheable
@@ -254,20 +361,38 @@ sub vcl_backend_response {
         return(deliver);
     }
 
+    set beresp.ttl = <VARNISH_BERESP_GRACE>;
+    set beresp.ttl = <VARNISH_BERESP_KEEP>;
     return (deliver);
+
 }
 
 sub vcl_deliver {
     set resp.http.grace = req.http.grace;
+
+    # add a note in the header regarding the backend
+    set resp.http.X-Backend = req.backend_hint;
+
     if (obj.hits > 0) {
          set resp.http.X-Cache = "HIT";
     } else {
         set resp.http.X-Cache = "MISS";
     }
-    if (!(req.http.X-Anonymous ~ "True")) {
-        set resp.http.Cache-Control = "max-age=0, no-cache, no-store, private, must-revalidate, post-check=0, pre-check=0";
-        set resp.http.Pragma = "no-cache";
+    /* Rewrite s-maxage to exclude from intermediary proxies
+      (to cache *everywhere*, just use 'max-age' token in the response to avoid
+      this override) */
+    if (resp.http.Cache-Control ~ "s-maxage") {
+        set resp.http.Cache-Control = regsub(resp.http.Cache-Control, "s-maxage=[0-9]+", "s-maxage=0");
     }
+    /* Remove proxy-revalidate for intermediary proxies */
+    if (resp.http.Cache-Control ~ ", proxy-revalidate") {
+        set resp.http.Cache-Control = regsub(resp.http.Cache-Control, ", proxy-revalidate", "");
+    }
+    # set audio, video and pdf for inline display
+    if (resp.http.Content-Type ~ "audio/" || resp.http.Content-Type ~ "video/" || resp.http.Content-Type ~ "/pdf") {
+        set resp.http.Content-Disposition = regsub(resp.http.Content-Disposition, "attachment;", "inline;");
+    }
+
 }
 
 /*

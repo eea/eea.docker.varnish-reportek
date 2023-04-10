@@ -1,14 +1,15 @@
-FROM eeacms/varnish:4.1-6.4
-MAINTAINER "EEA: IDM2 C-TEAM" <eea-edw-c-team-alerts@googlegroups.com>
+FROM eeacms/varnish:7
+LABEL maintainer="IDM2 C-TEAM <eea-edw-c-team-alerts@googlegroups.com>"
 
+ENV VARNISH_SIZE="2G" 
+ENV VARNISH_BACKEND="haproxy"
+ENV VARNISH_BACKEND_PORT="8080"
+ENV VARNISH_DNS_TTL=20s
+ENV VARNISH_BERESP_TTL="60s"
+ENV VARNISH_BERESP_GRACE="120s"
+ENV VARNISH_BERESP_KEEP="120s"
 
+CMD ["-p", "thread_pools=8", "-p", "thread_pool_timeout=120", "-p", "thread_pool_add_delay=0.002", "-p", "ban_lurker_sleep=0.1", "-p", "send_timeout=3600", "-p", "connect_timeout=2s", "-p", "first_byte_timeout=300s", "-p", "between_bytes_timeout=60s"]
 
-ENV  PARAM_VALUE="-p thread_pool_min=100 -p thread_pool_max=1000 -p thread_pool_timeout=300 -p lru_interval=1800 -p max_restarts=6 -p http_range_support=on -p http_max_hdr=128 -p http_req_hdr_len=20000 -p http_resp_hdr_len=20000 -p send_timeout=3600" \
-     BACKENDS="instance" \
-     BACKENDS_PORT="8080" \
-     BACKENDS_PROBE_ENABLED="false"
-
-COPY src/*.py src/track* src/*.sh  /
-COPY varnish.vcl /etc/varnish/conf.d/
-
+COPY varnish.vcl /etc/varnish/default.vcl
 
