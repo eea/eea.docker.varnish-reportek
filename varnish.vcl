@@ -361,8 +361,8 @@ sub vcl_backend_response {
         return(deliver);
     }
 
-    set beresp.ttl = <VARNISH_BERESP_GRACE>;
-    set beresp.ttl = <VARNISH_BERESP_KEEP>;
+    set beresp.grace = <VARNISH_BERESP_GRACE>;
+    set beresp.keep = <VARNISH_BERESP_KEEP>;
     return (deliver);
 
 }
