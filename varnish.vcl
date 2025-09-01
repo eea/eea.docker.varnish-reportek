@@ -37,7 +37,7 @@ sub vcl_recv {
 
     set req.http.X-Username = "Anonymous";
 
-    # PURGE - The CacheFu product can invalidate updated URLs 
+    # PURGE - The CacheFu product can invalidate updated URLs
     if (req.method == "PURGE") {
             if (!client.ip ~ purge) {
                 return (synth(405, "Not allowed."));
@@ -98,6 +98,11 @@ sub vcl_recv {
         return(pass);
     }
 
+    # Cache static files, except the big ones
+    if (req.method == "GET" && req.url ~ "^(/[a-zA-Z0-9\_\-]*)?/static/" && !(req.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$")) {
+        return(hash);
+    }
+
     set req.http.UrlNoQs = regsub(req.url, "\?.*$", "");
     # Do not cache authenticated requests
     if (req.http.Cookie && req.http.Cookie ~ "__ac(|_(name|password|persistent))=")
@@ -130,7 +135,7 @@ sub vcl_recv {
     }
 
     ## images
-    if (req.method == "GET" && req.url ~ "\.(gif|jpg|jpeg|bmp|png|tiff|tif|ico|img|tga|wmf)$") {
+    if (req.method == "GET" && req.url ~ "\.(gif|jpg|jpeg|bmp|png|tiff|tif|ico|img|tga|wmf|webp)$") {
         return(hash);
     }
 
@@ -313,6 +318,11 @@ sub vcl_backend_response {
         set beresp.uncacheable = true;
         set beresp.http.X-Cache = "NEVER";
         return(deliver);
+    }
+
+    # Header does not exist
+    if (!beresp.http.Cache-Control) {
+         set beresp.ttl = <VARNISH_BERESP_TTL>;
     }
 
     # The object is not cacheable
