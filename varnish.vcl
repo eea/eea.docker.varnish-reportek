@@ -288,6 +288,10 @@ sub vcl_miss {
 }
 
 sub vcl_backend_fetch{
+    // workaround for #292877
+    if (bereq.url ~ "run_conversion") {
+        set bereq.http.Connection = "close";
+    }
 
     return (fetch);
 }
