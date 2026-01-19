@@ -1,4 +1,4 @@
-FROM eeacms/varnish:7.7-1.0
+FROM eeacms/varnish:7.7-1.1
 LABEL maintainer="IDM2 C-TEAM <eea-edw-c-team-alerts@googlegroups.com>"
 
 ENV VARNISH_SIZE="2G" 
