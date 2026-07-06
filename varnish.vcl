@@ -13,7 +13,6 @@ sub vcl_init {
 }
 
 acl purge {
-    "localhost";
     "127.0.0.1";
     "172.17.0.0/16"; # Docker network
     "10.42.0.0/16";  # Rancher network
@@ -89,6 +88,21 @@ sub vcl_recv {
         return(pass);
     }
 
+    # Cache safe static assets even when Basic Auth or auth cookies are present.
+    # Reportek application JavaScript stays uncached for authenticated requests because it may carry dynamic context.
+    if ((req.method == "GET" || req.method == "HEAD") && (req.http.Authorization || req.http.Cookie ~ "(__ac(|_(name|password|persistent))|beaker\\.session)=") && req.url !~ "^((/[a-zA-Z0-9\_\-]*)?/static/|([^?]*/)?\+\+resource\+\+static/)ckeditor/" && req.url ~ "^((/[a-zA-Z0-9\_\-]*)?/(static/|styles/).*\.(css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|([^?]*/)?\+\+resource\+\+((static|images)/.*\.(css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|[^/]+\.(css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$)|([^?]*/)?misc_/Reportek/.*\.(css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|/favicon\.ico(\?.*)?$)") {
+        unset req.http.Authorization;
+        unset req.http.Cookie;
+        return(hash);
+    }
+
+    # Cache only known vendor JavaScript for authenticated requests. Keep ckeditor and Reportek app scripts uncached.
+    if ((req.method == "GET" || req.method == "HEAD") && (req.http.Authorization || req.http.Cookie ~ "(__ac(|_(name|password|persistent))|beaker\\.session)=") && req.url ~ "^((/[a-zA-Z0-9\_\-]*)?/static/|([^?]*/)?\+\+resource\+\+static/)((DataTables[^/]*|jquery-validation|select2[^/]*)/.*\.js|jquery[^/]*\.min\.js|moment\.min\.js|datatables(\.min)?\.js|datetime-moment\.js|spin\.min\.js)(\?.*)?$") {
+        unset req.http.Authorization;
+        unset req.http.Cookie;
+        return(hash);
+    }
+
     # Do not cache RestAPI authenticated requests
     if (req.http.Authorization || req.http.Authenticate) {
         set req.http.X-Username = "Authenticated (RestAPI)";
@@ -98,21 +112,25 @@ sub vcl_recv {
         return(pass);
     }
 
-    # Cache static files, except the big ones
-    if (req.method == "GET" && req.url ~ "^(/[a-zA-Z0-9\_\-]*)?/static/" && !(req.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$")) {
+    # Cache static files, Eionet styles, legacy Zope misc resources and Zope browser resources, except the big ones
+    if ((req.method == "GET" || req.method == "HEAD") && !(req.http.Cookie && req.http.Cookie ~ "(__ac(|_(name|password|persistent))|beaker\\.session)=") && req.url ~ "^((/[a-zA-Z0-9\_\-]*)?/(static/|styles/)|([^?]*/)?\+\+resource\+\+((static|images)/|[^/]+\.(js|css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$)|([^?]*/)?misc_/Reportek/.*\.(js|css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|/favicon\.ico(\?.*)?$)" && !(req.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$")) {
         return(hash);
     }
 
     set req.http.UrlNoQs = regsub(req.url, "\?.*$", "");
     # Do not cache authenticated requests
-    if (req.http.Cookie && req.http.Cookie ~ "__ac(|_(name|password|persistent))=")
+    if (req.http.Cookie && req.http.Cookie ~ "(__ac(|_(name|password|persistent))|beaker\\.session)=")
     {
-       if (req.http.UrlNoQs ~ "\.(js|css)$") {
+       if (req.http.UrlNoQs ~ "\.js$") {
             unset req.http.cookie;
             return(pipe);
         }
 
-        set req.http.X-Username = regsub( req.http.Cookie, "^.*?__ac=([^;]*);*.*$", "\1" );
+        if (req.http.Cookie ~ "__ac=") {
+            set req.http.X-Username = regsub( req.http.Cookie, "^.*?__ac=([^;]*);*.*$", "\1" );
+        } else {
+            set req.http.X-Username = "Authenticated (Cookie)";
+        }
 
         # pass (no caching)
         unset req.http.If-Modified-Since;
@@ -129,18 +147,18 @@ sub vcl_recv {
 
     ### always cache these items:
 
-    # javascript and css
-    if (req.method == "GET" && req.url ~ "\.(js|css)") {
+    # javascript, css, fonts and svg
+    if ((req.method == "GET" || req.method == "HEAD") && req.url ~ "\.(js|css|svg|woff2?|ttf|eot|otf)(\?.*)?$") {
         return(hash);
     }
 
     ## images
-    if (req.method == "GET" && req.url ~ "\.(gif|jpg|jpeg|bmp|png|tiff|tif|ico|img|tga|wmf|webp)$") {
+    if ((req.method == "GET" || req.method == "HEAD") && req.url ~ "\.(gif|jpg|jpeg|bmp|png|tiff|tif|ico|img|tga|wmf|webp)(\?.*)?$") {
         return(hash);
     }
 
     ## for some urls or request we can do a pass here (no caching)
-    if (req.method == "GET" && (
+    if ((req.method == "GET" || req.method == "HEAD") && (
                 req.url ~ "robots\.txt$" ||
                 req.url ~ "aq_parent" ||
                 req.url ~ "manage$" ||
@@ -313,8 +331,8 @@ sub vcl_backend_response {
         return(deliver);
     }
 
-    # Only cache css/js/image content types and custom specified content types
-    if (beresp.http.Content-Type !~ "application/javascript|text/html|application/x-javascript|text/css|image/*|${VARNISH_CACHE_CTYPES}") {
+    # Only cache css/js/image/font content types and custom specified content types
+    if (beresp.http.Content-Type !~ "application/javascript|text/javascript|text/html|application/x-javascript|text/css|image/*|image/svg\\+xml|font/|application/font|application/x-font|application/vnd.ms-fontobject|${VARNISH_CACHE_CTYPES}") {
         unset beresp.http.Cache-Control;
         set beresp.http.Cache-Control = "no-cache, max-age=0, must-revalidate";
         set beresp.ttl = 0s;
@@ -324,9 +342,25 @@ sub vcl_backend_response {
         return(deliver);
     }
 
+    # If pass then uncacheable, do not store url or add static cache markers.
+    if (bereq.uncacheable) {
+        set beresp.uncacheable = true;
+        set beresp.ttl = 0s;
+        set beresp.http.X-Cacheable = "NO - PASS";
+        return(deliver);
+    }
+
     # Header does not exist
     if (!beresp.http.Cache-Control) {
          set beresp.ttl = <VARNISH_BERESP_TTL>;
+    }
+
+    # Cache static files, Eionet styles, legacy Zope misc resources and Zope browser resources with a dedicated proxy TTL,
+    # unless the backend explicitly marks them private or not cacheable.
+    if (beresp.status >= 200 && beresp.status < 400 && bereq.url ~ "^((/[a-zA-Z0-9\_\-]*)?/(static/|styles/)|([^?]*/)?\+\+resource\+\+((static|images)/|[^/]+\.(js|css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$)|([^?]*/)?misc_/Reportek/.*\.(js|css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|/favicon\.ico(\?.*)?$)" && beresp.http.Cache-Control !~ "private|no-cache|no-store" && beresp.http.Surrogate-control !~ "no-store") {
+        set beresp.ttl = <VARNISH_STATIC_TTL>;
+        set beresp.http.X-Varnish-Caching-Rule-Id = "static-resource-files";
+        set beresp.http.X-Varnish-Header-Set-Id = "cache-in-proxy-<VARNISH_STATIC_TTL>";
     }
 
     # The object is not cacheable

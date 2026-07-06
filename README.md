@@ -39,6 +39,7 @@ reportek Varnish image
 * `VARNISH_BACKEND_PORT` - service internal port
 * `VARNISH_DNS_TTL` - how often will varnish check the IP of the hostname/rancher service
 * `VARNISH_BERESP_TTL`, `VARNISH_BERESP_GRACE`, `VARNISH_BERESP_KEEP` - Object timeline configuration https://docs.varnish-software.com/tutorials/object-lifetime/
+* `VARNISH_STATIC_TTL` - TTL for `/static/`, `/styles/`, `/favicon.ico`, legacy Zope `/misc_/Reportek/` and Zope `++resource++static` / `++resource++images` resources
 
 ## How to add new variable in varnish.vcl
 
