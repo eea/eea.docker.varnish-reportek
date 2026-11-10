@@ -33,6 +33,10 @@ reportek Varnish image
 * `AUTOKILL_CRON` - Varnish re-create crontab, will force a recreation of the container. Uses UTC time, format is linux crontab - for example -  `0 2 * * *` is 02:00 UTC each day" 
 * `VARNISH_CFG_CONTENT` - Multiline variable that will be written in the `default.vcl` file
 
+## From this image (`reportek-entrypoint.sh`)
+
+* `VARNISH_TRANSIENT_SIZE` - size of the `Transient` storage (default `1G`), used for uncacheable / pass objects and not counted in `VARNISH_SIZE`. Varnish leaves it unbounded by default, so large uncacheable responses can grow memory until the container is OOM-killed. When the cap is reached, requests that need Transient space fail (`FetchError: Could not get storage`, truncated body for slow clients) while the main cache is untouched. Keep `VARNISH_SIZE` + `VARNISH_TRANSIENT_SIZE` + ~2G overhead below the container memory limit. Only applied when the container is started with no arguments or with `varnishd` flags (the default `CMD`).
+
 ## varnish.vcl variables
 
 * `VARNISH_BACKEND` - hostname / rancher service name
