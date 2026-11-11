@@ -44,7 +44,12 @@ sub vcl_recv {
 
             # replace normal purge with ban-lurker way - may not work
             # Cleanup double slashes: '//' -> '/' - refs #95891
-            ban ("obj.http.x-url == " + regsub(req.url, "\/\/", "/"));
+            # x-url has the query string, so also ban the variants of the URL with one
+            # (?show=all, ?show=paged&page=2, ...) and not only the exact URL. The URL is
+            # escaped to be matched literally.
+            ban ("obj.http.x-url ~ ^" +
+                 regsuball(regsub(req.url, "\/\/", "/"), "([][.+*?(){}|^$\\])", "\\\1") +
+                 "(\?.*)?$");
             return (synth(200, "Ban added. URL will be purged by lurker"));
     }
 
