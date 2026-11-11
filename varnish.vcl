@@ -216,11 +216,18 @@ sub vcl_recv {
         return(pass);
     }
 
-    # Large static files should be piped, so they are delivered directly to the end-user without
-    # waiting for Varnish to fully read the file first.
+    # Large static files are passed, so they are not cached. They are streamed to the end-user
+    # while Varnish reads them, without waiting for the whole file (see do_stream and
+    # transit_buffer in vcl_backend_response).
 
     if (req.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$") {
-        return(pipe);
+        # Varnish 9.1 answers 503 ("Expected low range") when a passed request has a suffix range
+        # (Range: bytes=-N, used to read the end of a zip or mp4) even if the backend answers it
+        # correctly. Requests with a range are small, so they stay piped.
+        if (req.http.Range) {
+            return(pipe);
+        }
+        return(pass);
     }
 
     return (hash);
