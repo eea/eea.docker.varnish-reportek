@@ -333,6 +333,8 @@ sub vcl_backend_response {
         set beresp.http.X-Cacheable = "NO - File Stream";
         set beresp.uncacheable = true;
         set beresp.do_stream = true;
+        # limit memory used for slow clients downloading large streamed files
+        set beresp.transit_buffer = 1M;
         return(deliver);
     }
 
