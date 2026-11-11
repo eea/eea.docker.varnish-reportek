@@ -45,11 +45,12 @@ sub vcl_recv {
             # replace normal purge with ban-lurker way - may not work
             # Cleanup double slashes: '//' -> '/' - refs #95891
             # x-url has the query string, so also ban the variants of the URL with one
-            # (?show=all, ?show=paged&page=2, ...) and not only the exact URL. The URL is
-            # escaped to be matched literally.
+            # (?show=all, ?show=paged&page=2, ...) and not only the exact URL. Zope purges
+            # /coll but the links of the site are /coll/, which is the same page, so the
+            # trailing slash is optional. The URL is escaped to be matched literally.
             ban ("obj.http.x-url ~ ^" +
-                 regsuball(regsub(req.url, "\/\/", "/"), "([][.+*?(){}|^$\\])", "\\\1") +
-                 "(\?.*)?$");
+                 regsuball(regsub(regsub(req.url, "\/\/", "/"), "/$", ""), "([][.+*?(){}|^$\\])", "\\\1") +
+                 "/?(\?.*)?$");
             return (synth(200, "Ban added. URL will be purged by lurker"));
     }
 
