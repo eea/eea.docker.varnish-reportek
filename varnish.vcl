@@ -102,14 +102,14 @@ sub vcl_recv {
 
     # Cache safe static assets even when Basic Auth or auth cookies are present.
     # Reportek application JavaScript stays uncached for authenticated requests because it may carry dynamic context.
-    if ((req.method == "GET" || req.method == "HEAD") && (req.http.Authorization || req.http.Cookie ~ "(__ac(|_(name|password|persistent))|beaker\\.session)=") && req.url !~ "^((/[a-zA-Z0-9\_\-]*)?/static/|([^?]*/)?\+\+resource\+\+static/)ckeditor/" && req.url ~ "^((/[a-zA-Z0-9\_\-]*)?/(static/|styles/).*\.(css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|([^?]*/)?\+\+resource\+\+((static|images)/.*\.(css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|[^/]+\.(css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$)|([^?]*/)?misc_/Reportek/.*\.(css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|/favicon\.ico(\?.*)?$)") {
+    if ((req.method == "GET" || req.method == "HEAD") && (req.http.Authorization || req.http.Cookie ~ "(__ac(|_(name|password|persistent))|beaker\\.session)=") && req.url !~ "^((/VirtualHostBase/[^/]+/[^/]+/VirtualHostRoot)?(/[a-zA-Z0-9\_\-]*)?/static/|([^?]*/)?\+\+resource\+\+static/)ckeditor/" && req.url ~ "^((/VirtualHostBase/[^/]+/[^/]+/VirtualHostRoot)?(/[a-zA-Z0-9\_\-]*)?/(static/|styles/).*\.(css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|([^?]*/)?\+\+resource\+\+((static|images)/.*\.(css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|[^/]+\.(css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$)|([^?]*/)?misc_/Reportek/.*\.(css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|(/VirtualHostBase/[^/]+/[^/]+/VirtualHostRoot)?/favicon\.ico(\?.*)?$)") {
         unset req.http.Authorization;
         unset req.http.Cookie;
         return(hash);
     }
 
     # Cache only known vendor JavaScript for authenticated requests. Keep ckeditor and Reportek app scripts uncached.
-    if ((req.method == "GET" || req.method == "HEAD") && (req.http.Authorization || req.http.Cookie ~ "(__ac(|_(name|password|persistent))|beaker\\.session)=") && req.url ~ "^((/[a-zA-Z0-9\_\-]*)?/static/|([^?]*/)?\+\+resource\+\+static/)((DataTables[^/]*|jquery-validation|select2[^/]*)/.*\.js|jquery[^/]*\.min\.js|moment\.min\.js|datatables(\.min)?\.js|datetime-moment\.js|spin\.min\.js)(\?.*)?$") {
+    if ((req.method == "GET" || req.method == "HEAD") && (req.http.Authorization || req.http.Cookie ~ "(__ac(|_(name|password|persistent))|beaker\\.session)=") && req.url ~ "^((/VirtualHostBase/[^/]+/[^/]+/VirtualHostRoot)?(/[a-zA-Z0-9\_\-]*)?/static/|([^?]*/)?\+\+resource\+\+static/)((DataTables[^/]*|jquery-validation|select2[^/]*)/.*\.js|jquery[^/]*\.min\.js|moment\.min\.js|datatables(\.min)?\.js|datetime-moment\.js|spin\.min\.js)(\?.*)?$") {
         unset req.http.Authorization;
         unset req.http.Cookie;
         return(hash);
@@ -125,7 +125,7 @@ sub vcl_recv {
     }
 
     # Cache static files, Eionet styles, legacy Zope misc resources and Zope browser resources, except the big ones
-    if ((req.method == "GET" || req.method == "HEAD") && !(req.http.Cookie && req.http.Cookie ~ "(__ac(|_(name|password|persistent))|beaker\\.session)=") && req.url ~ "^((/[a-zA-Z0-9\_\-]*)?/(static/|styles/)|([^?]*/)?\+\+resource\+\+((static|images)/|[^/]+\.(js|css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$)|([^?]*/)?misc_/Reportek/.*\.(js|css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|/favicon\.ico(\?.*)?$)" && !(req.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$")) {
+    if ((req.method == "GET" || req.method == "HEAD") && !(req.http.Cookie && req.http.Cookie ~ "(__ac(|_(name|password|persistent))|beaker\\.session)=") && req.url ~ "^((/VirtualHostBase/[^/]+/[^/]+/VirtualHostRoot)?(/[a-zA-Z0-9\_\-]*)?/(static/|styles/)|([^?]*/)?\+\+resource\+\+((static|images)/|[^/]+\.(js|css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$)|([^?]*/)?misc_/Reportek/.*\.(js|css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|(/VirtualHostBase/[^/]+/[^/]+/VirtualHostRoot)?/favicon\.ico(\?.*)?$)" && !(req.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$")) {
         return(hash);
     }
 
@@ -378,7 +378,7 @@ sub vcl_backend_response {
 
     # Cache static files, Eionet styles, legacy Zope misc resources and Zope browser resources with a dedicated proxy TTL,
     # unless the backend explicitly marks them private or not cacheable.
-    if (beresp.status >= 200 && beresp.status < 400 && bereq.url ~ "^((/[a-zA-Z0-9\_\-]*)?/(static/|styles/)|([^?]*/)?\+\+resource\+\+((static|images)/|[^/]+\.(js|css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$)|([^?]*/)?misc_/Reportek/.*\.(js|css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|/favicon\.ico(\?.*)?$)" && beresp.http.Cache-Control !~ "private|no-cache|no-store" && beresp.http.Surrogate-control !~ "no-store") {
+    if (beresp.status >= 200 && beresp.status < 400 && bereq.url ~ "^((/VirtualHostBase/[^/]+/[^/]+/VirtualHostRoot)?(/[a-zA-Z0-9\_\-]*)?/(static/|styles/)|([^?]*/)?\+\+resource\+\+((static|images)/|[^/]+\.(js|css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$)|([^?]*/)?misc_/Reportek/.*\.(js|css|svg|woff2?|ttf|eot|otf|gif|jpe?g|bmp|png|tiff?|ico|img|tga|wmf|webp)(\?.*)?$|(/VirtualHostBase/[^/]+/[^/]+/VirtualHostRoot)?/favicon\.ico(\?.*)?$)" && beresp.http.Cache-Control !~ "private|no-cache|no-store" && beresp.http.Surrogate-control !~ "no-store") {
         set beresp.ttl = <VARNISH_STATIC_TTL>;
         set beresp.http.X-Varnish-Caching-Rule-Id = "static-resource-files";
         set beresp.http.X-Varnish-Header-Set-Id = "cache-in-proxy-<VARNISH_STATIC_TTL>";
