@@ -25,6 +25,12 @@ acl purge {
 sub vcl_recv {
 
     set req.backend_hint = cluster.backend("<VARNISH_BACKEND>");
+
+    # Use an expired object only for up to 10s (see vcl_hit), an older one has to be a
+    # miss so that it is fetched and stored again. A pass would leave it in the cache, bypassed.
+    if (std.healthy(req.backend_hint)) {
+        set req.grace = 10s;
+    }
     set req.http.X-Varnish-Routed = "1";
 
     if (req.http.X-Forwarded-Proto == "https" ) {
