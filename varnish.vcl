@@ -257,7 +257,14 @@ sub vcl_pass {
 }
 
 sub vcl_hash {
-    hash_data(req.url);
+    # Zope serves ++resource++ and misc_/Reportek resources under every context path:
+    # hash css, images and fonts by resource path only, so they are cached once instead of once per object.
+    # Other types (e.g. javascript) can differ per context, so they keep the full url.
+    if (req.url ~ "^[^?]*/(\+\+resource\+\+|misc_/Reportek/)[^?]*\.(css|gif|jpe?g|png|svg|ico|webp|bmp|tiff?|woff2?|ttf|eot|otf)(\?.*)?$") {
+        hash_data(regsub(req.url, "^[^?]*?/(\+\+resource\+\+|misc_/Reportek/)", "/\1"));
+    } else {
+        hash_data(req.url);
+    }
     if (req.http.host) {
         hash_data(req.http.host);
     } else {
